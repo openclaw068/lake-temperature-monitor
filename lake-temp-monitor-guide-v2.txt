@@ -1,0 +1,698 @@
+
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 1
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+Lake Temperature Monitor
+Solar-Powered · LoRa 915 MHz · ESPHome · Home Assistant
+Version 2 — Audit Corrected
+Project Overview
+SensorsWater temp (DS18B20 probe) + Air temp (DS18B20)
+RadioLoRa 915 MHz, SX1262, ~1 mile range
+PowerSolar + 1x 18650 (fully off-grid, simplified)
+IntegrationESPHome native API → Home Assistant
+Total Cost~$130–$150 all-in
+Build TimeHalf a day (indoor bench test + outdoor deploy)
+Table of Contents
+1. Audit Summary — What Changed and Why
+2. System Architecture
+3. Complete Shopping List with Links
+4. Hardware Assembly — Dock Node
+5. Hardware Assembly — Home Gateway
+6. Outdoor Deployment & Camouflage
+7. Software Setup — Corrected ESPHome Firmware
+8. Home Assistant Integration
+9. Troubleshooting
+10. Maintenance Schedule
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 2
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+1.  Audit Summary — What Changed and Why
+This guide was audited against the live ESPHome documentation. The firmware YAML in the original contained several
+errors that would have caused compile failures. All have been corrected in Section 7. The shopping list has also been
+simplified. Here is a full account of every change.
+Firmware Errors Fixed (would have caused compile failures)
+#What Was WrongWhat It Should Be
+1nss_pin: used for chip selectcs_pin: is the correct ESPHome key
+2hw_version: missing entirelyRequired field — must be hw_version: sx1262
+3modulation: missing entirelyRequired field — must be modulation: LORA
+4tx_power: 17 (wrong key, wrong range)Correct key is pa_power: (integer, max 22 for SX1262)
+5coding_rate: "4/5" (string, invalid)Must use enum: CR_4_5  (or CR_4_6, CR_4_7, CR_4_8)
+6tcxo_voltage / tcxo_delay missingHeltec V3 has TCXO on DIO3 — omitting causes radio instability
+7esphome: block used platform: / board: inlineModern ESPHome uses a separate esp32: component block
+8Byte-packing Fahrenheit as uint8_t (max 255, decimal math broken)Pack Celsius as signed int16_t × 10; convert to °F on gateway
+9packet_transport: used fabricated on_receive: / send_packet() APIReal API: use sx126x on_packet: trigger and sx126x.send_packet: action
+Hardware / Shopping List Changes
+ChangeReason
+Reduced from 2x 18650 (parallel) to 1x 18650At your duty cycle (~0.5mA avg), one 3000mAh cell with solar is essentially inexhaustible. The parallel pack added wiring complexity for zero practical benefit.
+Removed 20-pack single holders + JST crimp kitOverkill with a single cell. Replaced with one pre-wired holder with JST 1.25mm lead already attached — plug and play.
+Reduced Samsung 30Q from 4-pack to 2-packOne for the node, one spare. Saves ~$10.
+GPIO37 battery ADC marked as 'verify first'Pin varies between Heltec V3 hardware revisions. Check your board's schematic before trusting it.
+n Everything else in the original guide was verified correct: board selection, SPI GPIO pins, DS18B20 wiring, 1-Wire bus
+topology, solar panel choice, enclosure, deployment strategy, and Home Assistant integration.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 3
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+2.  System Architecture
+The system has two hardware nodes and one software stack:
+ComponentRoleLocation
+Dock Node
+(Heltec V3 #1)
+Reads water + air temperature
+Transmits over LoRa every 5 min
+Solar + battery powered
+Hidden in tree outcropping
+30–75 ft from water
+Home Gateway
+(Heltec V3 #2)
+Receives LoRa packets
+Forwards data to Home Assistant
+via UniFi WiFi
+Inside your home
+Plugged into USB power
+ESPHomeFirmware for both boards
+Handles LoRa, sensors, WiFi
+Native HA integration
+Runs on ESP32 chips
+Managed from HA dashboard
+Home AssistantDisplays temp dashboard
+Sends wetsuit alerts
+Stores historical data
+Your existing HA server
+DS18B20 probe → ESP32 GPIO5 → SX1262 LoRa packet → 915 MHz RF →
+Home Gateway SX1262 → on_packet: trigger → template sensors → ESPHome API → HA
+n Both boards run ESPHome. No LoRaWAN server, no MQTT broker, no cloud. The dock node has NO WiFi — it saves
+power by waking, reading sensors, transmitting one LoRa packet, then sleeping for 5 minutes.
+n ESPHome SX126x + Packet Transport support ships in v2025.7.0 and later. Confirm your ESPHome add-on is up to date
+in HA → Settings → Add-ons before starting.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 4
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+3.  Complete Shopping List with Links
+Core Electronics
+ItemNotesQty~CostLink
+Heltec WiFi LoRa 32 V3
+902–928 MHz US version
+ESP32-S3 + SX1262
+Built-in JST solar + battery
+OLED display
+n Must be 902-928MHz NOT EU
+2$38
+(2-pack)
+amazon.com/dp/
+B0CW6151WJ
+DS18B20 Waterproof Probe
+3-meter cable, 3-pack
+One for water, one for air
+Stainless steel IP68 probe
+Third is a spare
+1
+pack
+~$12amazon.com/dp/
+B0CZ8D6Z3C
+4.7 kΩ Resistors — 10-pack1-Wire pull-up for DS18B20
+Only one needed total
+1
+pack
+~$2amazon.com/dp/
+B072HSXKX5
+n You MUST order the 902–928 MHz US version. The EU version (863–870 MHz) looks identical but is factory-tuned for a
+different band and cannot be retuned. Check the listing title before purchasing.
+Power System (Dock Node Only)
+ItemNotesQty~CostLink
+SOOCOOL Samsung 30Q
+18650 — 2-pack
+Authentic 3000mAh flat-top
+Avoid anything >3500mAh claims
+You need 1 cell; 2nd is a spare
+1
+pack
+~$20amazon.com/dp/
+B0BNLPWKXR
+Single 18650 holder
+with JST 1.25mm lead
+Pre-wired, plug directly into
+Heltec V3 battery port
+Verify polarity before inserting!
+1~$4store.rokland.com/products/
+battery-holder-for-18650-
+with-jst-ph-connector
+Waveshare 6V 5W Solar Panel
+Monocrystalline, glass-fronted
+6V output matches Heltec charger
+Toughened glass + aluminum frame
+Includes DC barrel cable
+1~$15amazon.com/dp/
+B07PP15XYQ
+JST 1.25mm 2-pin connectors
+20-set with wire
+For solar panel cable adaptation
+to Heltec JST solar port
+1
+pack
+~$7amazon.com/dp/
+B093WVXHSD
+Enclosure & Weatherproofing
+ItemNotesQty~CostLink
+TICONN IP67 ABS Enclosure
+5.9" × 3.9" × 2.8"
+Hinged lid, latching closure
+Includes mounting plate
+Cable glands included
+1~$15amazon.com/dp/
+B0B87THLGC
+PG7 Cable Glands — 20-pack
+IP68, 3–6.5mm cable range
+For probe + solar cables
+Bottom-entry only — never top
+1
+pack
+~$7amazon.com/dp/
+B06Y5HGYK2
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 5
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+ItemNotesQty~CostLink
+22 AWG 3-conductor wire
+50ft, outdoor PVC jacket
+DS18B20 probe extension cable
+Run from box to water entry
+1
+spool
+~$10amazon.com/dp/
+B0DZBRTK72
+Heat shrink tubing
+assortment kit
+Essential for waterproofing
+every probe wire splice
+1
+kit
+~$8amazon.com/dp/
+B01MFA3OFA
+Camouflage & Mounting
+ItemNotesQty~CostLink
+Rust-Oleum Camo Spray
+Dark Green
+Matte finish for ABS box
+Lightly sand box first
+1~$7amazon.com/dp/
+B00BXDWCUS
+Rust-Oleum Camo Spray
+Earth Brown / Khaki
+Second colour for over-spray
+Blend into tree bark
+1~$7amazon.com/dp/
+B00BXDWCS2
+Landscape Staples / U-pins
+100-pack
+Pin probe cable to ground
+along the cable run
+1
+pack
+~$8amazon.com/dp/
+B07D4N7XDP
+UV-resistant black zip ties
+100-pack
+Tree mounting straps
+and cable management
+1
+pack
+~$7amazon.com/dp/
+B0006O6NCQ
+Stainless steel eye bolts
+small pack
+Probe anchor at water entry
+Screw into submerged root/log
+1
+pack
+~$7amazon.com/dp/
+B07G5JXFBL
+CategoryEstimated Cost
+Core electronics (2x Heltec, probes, resistors)$52
+Power system (batteries, holder, solar, JST)$46
+Enclosure & wiring (box, glands, wire, heat shrink)$40
+Camouflage & mounting (spray, staples, ties, eye bolts)$29
+TOTAL~$167
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 6
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+4.  Hardware Assembly — Dock Node
+Step 1: Extend the DS18B20 probe cables
+The  probes  come  with  ~3m  (10ft)  of  cable.  Cut  your  22  AWG  3-conductor  wire  to  reach  from  the  box  location  to  the
+water entry point, adding 15% slack. Strip ends and solder to the probe wires:
+• Red (VCC) → Red conductor
+• Black (GND) → Black conductor
+• Yellow/White (DATA) → remaining conductor
+n Waterproof every joint. Slide heat-shrink over each conductor BEFORE soldering, then shrink after. Add a larger piece of
+heat-shrink over all three combined. This junction must be 100% waterproof.
+Step 2: Identify DS18B20 addresses
+Every  DS18B20  has  a  unique  64-bit  address.  You  need  both  to  assign  each  probe  in  ESPHome.  Flash  the  address
+scanner YAML from Section 7, open the ESPHome log, connect ONE probe at a time, and record each address. Label
+them WATER and AIR with tape.
+Step 3: Wire probes to Heltec V3
+ConnectionHeltec V3 PinNotes
+DS18B20 VCC (both probes)3.3VBoth red wires to same 3.3V pin
+DS18B20 GND (both probes)GNDBoth black wires to same GND
+DS18B20 DATA (both probes)GPIO5Both data wires share this pin — 1-Wire bus
+4.7 kΩ pull-up resistorBetween GPIO5 and 3.3VOne resistor shared by both probes
+Solar panel +SOLAR+ (JST 1.25)Via adapted SH1.25 connector
+Solar panel −SOLAR− (JST 1.25)Via adapted SH1.25 connector
+18650 battery +BAT+ (JST 1.25)Pre-wired holder plugs directly in
+18650 battery −BAT− (JST 1.25)Verify polarity with multimeter first!
+n Measure battery polarity with a multimeter before inserting cells. Many holders have reversed polarity wiring. Plugging in
+backwards will damage the board.
+Step 4: Assemble enclosure
+• Drill PG7 cable gland holes in the BOTTOM only — never top or sides
+• Thread probe cable through gland #1 and tighten once positioned
+• Thread solar cable through gland #2 and tighten
+• Mount Heltec V3 inside on the mounting plate with foam tape or M2 standoffs
+• Connect all wires, insert battery, snap the LoRa antenna to the U.FL connector
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 7
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+• Close the enclosure — do not seal permanently until bench-tested
+n Leave the box unlatched during initial testing. Only seal the cable glands and close permanently once LoRa
+communication is confirmed working.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 8
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+5.  Hardware Assembly — Home Gateway
+The gateway is simple — it lives inside your home, plugged into USB power. No battery, no solar, no weatherproofing.
+• Take the second Heltec V3 board
+• Attach the included 915 MHz LoRa antenna to the U.FL connector
+• Connect via USB-C to any 5V USB adapter
+• Position near a window facing the direction of the lake for best receive sensitivity
+n Assign a static DHCP reservation for the gateway in UniFi: Network → Clients → find gateway → Settings → Fixed IP.
+Without this, ESPHome loses the device after a DHCP lease expires.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 9
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+6.  Outdoor Deployment & Camouflage
+Mount location criteria
+• South-facing sky exposure for the solar panel (diffuse light is fine)
+• At least 3–4 feet off the ground — height dramatically improves LoRa range
+• On the opposite side of the trunk from any trail or path
+• Within 75 feet of the water's edge to keep the probe cable run simple
+Camouflage the box
+• Lightly sand the ABS box with 120-grit sandpaper to create tooth for paint
+• Apply 2 thin coats: dark green base, brown over-spray. Cure 24 hours
+• Optional: attach strips of camo burlap or twine to break up the outline
+The Official-Looking Label — Most Effective Theft Deterrent
+Print this on white card stock and laminate it. Attach to the front of the box with weatherproof adhesive:
+ENVIRONMENTAL MONITORING STATION
+nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+Lake Water Quality Program
+This device monitors water and air temperature
+for recreational water quality assessment.
+DO NOT DISTURB — SENSOR IN USE
+Report tampering: Parks & Recreation Dept.
+Device ID: LWQ-2024-0042
+n Fishermen and hikers almost universally assume a labeled box is official equipment and leave it alone. The 'Parks &
+Recreation Dept.' phrasing is particularly effective.
+Running the probe cable
+• Lay cable along the base of vegetation, following natural contours
+• Use landscape staples every 2–3 feet to pin it to the ground
+• Cover with leaf litter or loose soil along the run
+• At the water's edge, screw a stainless eye bolt into a submerged root or stable log
+• Thread the probe through the eye bolt and tie off — hang the probe 12–18 inches below surface
+Solar panel mounting options
+• Option A (preferred): Mount at 30–45 degrees facing south on the box lid or nearby branch. Even partial sky
+exposure works at your low duty cycle.
+• Option B (dense canopy): Mount horizontally on top of the box facing straight up. Diffuse sky light through thin
+canopy is enough. Also hardest to spot from the ground.
+n Never place leaf litter ON the solar cells — only around the frame. Any direct shading significantly reduces output.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 10
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+7.  Software Setup — Corrected ESPHome Firmware
+n All YAML in this section has been corrected from v1 of this guide. Key fixes: cs_pin (not nss_pin), hw_version and
+modulation are now present, pa_power replaces tx_power, coding_rate uses correct enum format, tcxo settings added,
+esp32: is a separate block, and temperature byte-packing uses signed int16_t in Celsius.
+Prerequisites
+• Home Assistant installed and running
+• ESPHome add-on installed (HA → Settings → Add-ons → ESPHome)
+• ESPHome version 2025.7.0 or newer
+• Both Heltec V3 boards connected via USB-C for first flash
+Step 1: Address Scanner
+Flash  this  to  the  dock  node  first  with  both  probes  connected.  Open  the  ESPHome  log  and  record  both  DS18B20
+addresses — one at a time, labeling each WATER or AIR.
+esphome:
+  name: address-scanner
+esp32:
+  board: heltec_wifi_lora_32_V3
+  framework:
+    type: arduino
+logger:
+  level: DEBUG
+one_wire:
+  - platform: gpio
+    pin: GPIO5
+dallas_temp:
+  update_interval: 5s
+  # After boot, check logs for lines like:
+  # [D][dallas_temp]: Found dallas device '0x28FF...' on bus 0
+  # Record BOTH addresses, label them WATER and AIR
+Step 2: Dock Node Firmware
+Replace both DS18B20 addresses with your own from Step 1:
+esphome:
+  name: lake-dock-node
+  friendly_name: Lake Dock Node
+esp32:
+  board: heltec_wifi_lora_32_V3
+  framework:
+    type: arduino
+# No wifi: block on the dock node — saves power on every wake cycle
+deep_sleep:
+  id: deep_sleep_control
+  run_duration: 15s    # Wake window: read sensors + transmit + margin
+  sleep_duration: 5min # ~288 readings/day; adjust as needed
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 11
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+spi:
+  clk_pin:  GPIO9
+  mosi_pin: GPIO10
+  miso_pin: GPIO11
+sx126x:
+  id: lora_radio
+  cs_pin:   GPIO8          # 3 Corrected from nss_pin
+  rst_pin:  GPIO12
+  busy_pin: GPIO13
+  dio1_pin: GPIO14
+  hw_version:  sx1262      # 3 Required — was missing in v1
+  modulation:  LORA        # 3 Required — was missing in v1
+  frequency:   915MHz
+  bandwidth:   125_0kHz
+  spreading_factor: 9      # SF9: good range/speed balance for 1 mile
+  coding_rate: CR_4_5      # 3 Corrected from invalid "4/5" string
+  pa_power:    14          # 3 Corrected from tx_power: 17 (wrong key)
+  crc_enable:  true
+  rf_switch:   false
+  tcxo_voltage: 1_8V       # 3 Required for Heltec V3 TCXO — was missing
+  tcxo_delay:   5ms        # 3 Required for Heltec V3 TCXO — was missing
+one_wire:
+  - platform: gpio
+    pin: GPIO5             # 4.7kΩ pull-up to 3.3V required on this pin
+sensor:
+  # REPLACE addresses below with YOUR addresses from Step 1
+  - platform: dallas_temp
+    address: 0x28FF123456789012  # <-- YOUR WATER PROBE ADDRESS
+    name: "Water Temp Raw"
+    id: water_temp_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  - platform: dallas_temp
+    address: 0x28FF987654321098  # <-- YOUR AIR PROBE ADDRESS
+    name: "Air Temp Raw"
+    id: air_temp_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  # Battery voltage — GPIO pin may vary by hardware revision, verify yours
+  - platform: adc
+    pin: GPIO37            # n Verify against your board's schematic
+    name: "Battery Voltage"
+    id: bat_v
+    attenuation: 11db
+    update_interval: 10s
+    filters:
+      - multiply: 2.0      # Compensate for onboard 1:1 voltage divider
+# Transmit once per wake cycle then sleep
+interval:
+  - interval: 8s
+    then:
+      - sx126x.send_packet:
+          id: lora_radio
+          data: !lambda |-
+            // 3 Pack as Celsius int16_t x10 — avoids Fahrenheit byte overflow
+            int16_t wc = (int16_t)(id(water_temp_c).state * 10);
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 12
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+            int16_t ac = (int16_t)(id(air_temp_c).state * 10);
+            uint8_t bv = (uint8_t)(id(bat_v).state * 10);
+            return {
+              (uint8_t)(wc >> 8), (uint8_t)(wc & 0xFF),
+              (uint8_t)(ac >> 8), (uint8_t)(ac & 0xFF),
+              bv
+            };
+      - deep_sleep.enter:
+          id: deep_sleep_control
+logger:
+  level: INFO
+n Replace the two placeholder addresses with the actual 64-bit addresses you recorded in Step 1. They are unique to each
+physical probe and cannot be guessed.
+n GPIO37 for battery ADC varies between Heltec V3 hardware revisions. Check your board's schematic at heltec.org before
+deploying. If readings are wrong, try GPIO1.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 13
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+Step 3: Home Gateway Firmware
+This board stays powered and on your UniFi WiFi at all times:
+esphome:
+  name: lake-lora-gateway
+  friendly_name: Lake LoRa Gateway
+esp32:
+  board: heltec_wifi_lora_32_V3
+  framework:
+    type: arduino
+wifi:
+  ssid: "YOUR_UNIFI_SSID"
+  password: "YOUR_WIFI_PASSWORD"
+  manual_ip:
+    static_ip: 192.168.1.xxx   # Match your UniFi DHCP reservation
+    gateway:   192.168.1.1
+    subnet:    255.255.255.0
+api:
+  encryption:
+    key: "your-32-byte-base64-key-here"
+    # Generate at: esphome.io/components/api
+ota:
+  - platform: esphome
+    password: "your-ota-password"
+spi:
+  clk_pin:  GPIO9
+  mosi_pin: GPIO10
+  miso_pin: GPIO11
+sx126x:
+  id: lora_radio
+  cs_pin:   GPIO8          # 3 cs_pin (not nss_pin)
+  rst_pin:  GPIO12
+  busy_pin: GPIO13
+  dio1_pin: GPIO14
+  hw_version:  sx1262      # 3 Required
+  modulation:  LORA        # 3 Required
+  frequency:   915MHz      # Must exactly match dock node
+  bandwidth:   125_0kHz    # Must exactly match dock node
+  spreading_factor: 9      # Must exactly match dock node
+  coding_rate: CR_4_5      # Must exactly match dock node
+  pa_power:    14
+  crc_enable:  true
+  rf_switch:   false
+  tcxo_voltage: 1_8V       # 3 Required for Heltec V3
+  tcxo_delay:   5ms
+  # 3 Receive packets using the real on_packet: trigger (corrected from v1)
+  on_packet:
+    then:
+      - lambda: |-
+          if (x.size() >= 5) {
+            // Unpack Celsius int16_t x10, then convert to Fahrenheit
+            int16_t wc_raw = (int16_t)((x[0] << 8) | x[1]);
+            int16_t ac_raw = (int16_t)((x[2] << 8) | x[3]);
+            float wf = (wc_raw / 10.0f) * 9.0f / 5.0f + 32.0f;
+            float af = (ac_raw / 10.0f) * 9.0f / 5.0f + 32.0f;
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 14
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+            float bv = x[4] / 10.0f;
+            id(lake_water_temp).publish_state(wf);
+            id(lake_air_temp).publish_state(af);
+            id(dock_battery).publish_state(bv);
+            ESP_LOGI("lora", "water=%.1fF air=%.1fF bat=%.1fV rssi=%.0f",
+                     wf, af, bv, rssi);
+          }
+sensor:
+  - platform: template
+    name: "Lake Water Temperature"
+    id: lake_water_temp
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  - platform: template
+    name: "Lake Air Temperature"
+    id: lake_air_temp
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  - platform: template
+    name: "Dock Node Battery"
+    id: dock_battery
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+logger:
+  level: INFO
+n All LoRa RF settings — frequency, bandwidth, spreading_factor, coding_rate — must be identical on both boards. Any
+mismatch and they cannot communicate.
+n Generate your API key at esphome.io/components/api. Click 'Generate new key' and store it safely — you'll need it when
+adding the gateway to Home Assistant.
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 15
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+8.  Home Assistant Integration
+Step 1: Discover the gateway
+• Power on the gateway (it connects to UniFi WiFi automatically)
+• In HA → Settings → Devices & Services, 'lake-lora-gateway' appears as a discovered ESPHome device
+• Click Configure and enter your API encryption key
+• Three sensor entities appear: Lake Water Temperature, Lake Air Temperature, Dock Node Battery
+Step 2: Lovelace Dashboard Card
+In the HA dashboard YAML card editor:
+type: vertical-stack
+cards:
+  - type: custom:mushroom-template-card
+    primary: Lake Conditions
+    secondary: >
+      {% set w = states('sensor.lake_water_temperature') | float(-1) %}
+      {% set a = states('sensor.lake_air_temperature') | float(-1) %}
+      Water {{ w }}°F  •  Air {{ a }}°F
+    icon: mdi:waves
+    icon_color: >
+      {% set w = states('sensor.lake_water_temperature') | float(-1) %}
+      {% if w >= 70 %} green
+      {% elif w >= 60 %} orange
+      {% else %} blue {% endif %}
+  - type: entities
+    entities:
+      - entity: sensor.lake_water_temperature
+        name: Water Temp
+        icon: mdi:thermometer-water
+      - entity: sensor.lake_air_temperature
+        name: Air Temp
+        icon: mdi:thermometer
+      - entity: sensor.dock_node_battery
+        name: Node Battery
+        icon: mdi:battery-charging-wireless
+  - type: markdown
+    content: >
+      {% set w = states('sensor.lake_water_temperature') | float(-1) %}
+      {% if w < 0 %} Waiting for first reading...
+      {% elif w >= 72 %} No wetsuit needed! {{ w }}°F
+      {% elif w >= 65 %} Wetsuit optional. {{ w }}°F
+      {% elif w >= 58 %} Wetsuit recommended. {{ w }}°F
+      {% else %} Wetsuit required. {{ w }}°F — cold water.
+      {% endif %}
+Step 3: Wetsuit Alert Automation
+alias: "Lake - Wetsuit Not Needed Alert"
+trigger:
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 16
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+  - platform: numeric_state
+    entity_id: sensor.lake_water_temperature
+    above: 70
+    for:
+      minutes: 10
+action:
+  - service: notify.mobile_app_YOUR_PHONE_NAME
+    data:
+      title: "Lake is swimmable!"
+      message: >
+        Water just hit {{ states('sensor.lake_water_temperature') }}F.
+        Leave the wetsuit home.
+mode: single
+n Replace YOUR_PHONE_NAME with your device name from HA → Settings → Devices & Services → Mobile App.
+UniFi-Specific Tips
+• Assign a fixed IP to the gateway in UniFi Network → Clients → Settings → Fixed IP
+• If using IoT VLANs, put the gateway on your IoT network — it only needs to reach your HA server
+• Cross-VLAN: allow TCP port 6053 from IoT VLAN to HA's IP (the ESPHome native API port)
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 17
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+9.  Troubleshooting
+SymptomMost Likely CauseFix
+ESPHome won't compile
+(unknown key errors)
+Old YAML from v1 guide
+with wrong field names
+Use YAML from Section 7 only.
+Key fixes: cs_pin, hw_version,
+modulation, pa_power, CR_4_5
+No LoRa packets received
+at gateway
+RF settings mismatch or
+missing tcxo config
+Verify frequency, bandwidth,
+spreading_factor, coding_rate,
+tcxo_voltage match both boards
+DS18B20 reads -127°C or 85°CWiring error or missing
+pull-up resistor
+Check 4.7kΩ between DATA
+and 3.3V. Verify wire colours
+Wrong sensor always reads same
+or implausible value
+Addresses swapped between
+WATER and AIR probes
+Re-run address scanner with
+one probe at a time. Swap
+addresses in YAML if needed
+Node battery draining fastDeep sleep not activating
+or WiFi inadvertently enabled
+Remove any wifi: block from
+dock node YAML entirely
+Gateway not found in HAIP conflict or wrong WiFi
+credentials
+Check ESPHome logs via USB.
+Verify SSID, password, and
+static IP is not already in use
+Solar not chargingWrong connector polarity or
+panel voltage mismatch
+Verify panel outputs 5–6V.
+Check JST polarity (many
+adapter cables are reversed)
+Readings stop after daysBattery depleted or
+cable gland leak
+Check enclosure for water.
+Measure battery voltage.
+Reposition solar panel
+Range poor (< 0.5 miles)Node mounted too low,
+antenna loose, or wrong band
+Raise node height. Check
+U.FL antenna connector is
+fully snapped in. Confirm 915MHz
+
+Lake Temperature Monitor — Build Guide  (v2 — Corrected)Page 18
+DIY IoT Build Guide  •  ESPHome + LoRa + Home Assistant  •  US 915 MHz
+10.  Maintenance Schedule
+FrequencyTaskTime
+Weekly (first month)Confirm readings arrive every ~5 min in HA dashboard30 sec
+MonthlyCheck battery voltage in HA — should be above 3.6V1 min
+Every 6 monthsVisit site:
+• Inspect cable glands for water ingress
+• Check probe cable anchoring at water entry
+• Clear any debris off solar panel
+• Check mounting straps are still tight
+10–15 min
+AnnuallySwap 18650 cell as precaution
+OTA update ESPHome firmware
+15 min
+After major stormsCheck probe anchor is intact
+Check enclosure hasn't shifted or filled with water
+5 min
+OTA Firmware Updates
+The gateway updates over-the-air from the ESPHome add-on — no physical access needed. To update the dock node
+(no WiFi configured):
+• Add a temporary wifi: block to the dock node YAML matching your phone hotspot SSID/password
+• Walk close to the deployment site and enable the hotspot
+• Trigger OTA from ESPHome in HA
+• Remove the wifi: block and re-flash afterward
+n At ~5% duty cycle (15 sec awake per 5 min), the dock node draws roughly 0.5mA average. A 3000mAh cell with even
+modest solar input will run indefinitely. Annual cell swaps are a precaution, not a requirement.
+Reference Links
+ESPHome SX126x Component
+ESPHome SX126x Packet Transport Platform
+ESPHome Deep Sleep Component
+ESPHome Dallas Temperature Sensor
+Heltec V3 Product Page + Pinout
+Guide v2 — corrected after full audit against live ESPHome documentation. Always verify YAML syntax against official ESPHome docs
+before building, as APIs may change.
