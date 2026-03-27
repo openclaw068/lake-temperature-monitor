@@ -16,7 +16,8 @@ This repo includes:
 - `lake-temp-monitor-guide-v2.txt` — extracted text copy
 - `esphome/address-scanner.yaml` — finds DS18B20 addresses
 - `esphome/dock-node.yaml` — deep-sleeping transmitter (NO Wi‑Fi)
-- `esphome/gateway.yaml` — always-on receiver + Home Assistant sensors
+- `esphome/gateway.yaml` — always-on receiver + Home Assistant sensors (indoor/USB power)
+- `esphome/gateway-solar-outdoor.yaml` — always-on receiver + Home Assistant sensors (outdoor/solar box)
 
 ## Recommended software approach
 If you want this integrated into your smart home long-term, the simplest path is:
@@ -60,11 +61,15 @@ Notes:
 - It wakes up, sends one LoRa packet, then deep-sleeps for ~5 minutes.
 
 ### Step 3 — Configure and flash the home gateway
-1. Open `esphome/gateway.yaml`
-2. Set your Wi‑Fi SSID/password.
-3. In ESPHome, generate an API encryption key + OTA password (the UI will prompt you), and put them in the YAML.
-4. Flash to the gateway over USB.
-5. After it joins Wi‑Fi, Home Assistant should discover it as an ESPHome device.
+Pick one gateway config:
+- **Indoor/USB-powered gateway:** `esphome/gateway.yaml`
+- **Outdoor/solar gateway:** `esphome/gateway-solar-outdoor.yaml`
+
+Then:
+1. Set your Wi‑Fi SSID/password (default SSID in solar version is `IoT`).
+2. In ESPHome, generate an API encryption key + OTA password (the UI will prompt you), and put them in the YAML.
+3. Flash to the gateway over USB.
+4. After it joins Wi‑Fi, Home Assistant should discover it as an ESPHome device.
 
 ### Step 4 — Home Assistant entities
 Once the gateway is added to HA, you should see:

@@ -1,0 +1,103 @@
+esphome:
+  name: lake-lora-gateway-solar
+  friendly_name: Lake LoRa Gateway (Solar Outdoor)
+
+esp32:
+  board: heltec_wifi_lora_32_V3
+  framework:
+    type: arduino
+
+# This gateway stays awake (no deep sleep) so it can receive LoRa packets 24/7.
+
+wifi:
+  ssid: "IoT"
+  password: "YOUR_WIFI_PASSWORD"
+  power_save_mode: none
+
+api:
+  encryption:
+    key: "YOUR_32_BYTE_BASE64_KEY"  # generate in ESPHome UI
+
+ota:
+  - platform: esphome
+    password: "YOUR_OTA_PASSWORD"
+
+logger:
+  level: INFO
+
+# Sensors exposed to Home Assistant (health + decoded lake readings)
+sensor:
+  - platform: wifi_signal
+    name: "Gateway WiFi Signal"
+    update_interval: 60s
+
+  - platform: uptime
+    name: "Gateway Uptime"
+    update_interval: 60s
+
+  - platform: template
+    name: "Lake Water Temperature"
+    id: lake_water_temp
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: template
+    name: "Lake Air Temperature"
+    id: lake_air_temp
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: template
+    name: "Dock Node Battery"
+    id: dock_battery
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+
+spi:
+  clk_pin:  GPIO9
+  mosi_pin: GPIO10
+  miso_pin: GPIO11
+
+sx126x:
+  id: lora_radio
+  cs_pin:   GPIO8
+  rst_pin:  GPIO12
+  busy_pin: GPIO13
+  dio1_pin: GPIO14
+  hw_version:  sx1262
+  modulation:  LORA
+  frequency:   915MHz      # Must match dock node
+  bandwidth:   125_0kHz    # Must match dock node
+  spreading_factor: 9      # Increase to 10–12 if needed for range
+  coding_rate: CR_4_5      # Must match dock node
+  pa_power:    14
+  crc_enable:  true
+  rf_switch:   false
+  tcxo_voltage: 1_8V
+  tcxo_delay:   5ms
+
+  on_packet:
+    then:
+      - lambda: |-
+          if (x.size() >= 5) {
+            // Unpack Celsius int16_t x10, then convert to Fahrenheit
+            int16_t wc_raw = (int16_t)((x[0] << 8) | x[1]);
+            int16_t ac_raw = (int16_t)((x[2] << 8) | x[3]);
+            float wf = (wc_raw / 10.0f) * 9.0f / 5.0f + 32.0f;
+            float af = (ac_raw / 10.0f) * 9.0f / 5.0f + 32.0f;
+            float bv = x[4] / 10.0f;
+
+            id(lake_water_temp).publish_state(wf);
+            id(lake_air_temp).publish_state(af);
+            id(dock_battery).publish_state(bv);
+
+            ESP_LOGI("lora", "water=%.1fF air=%.1fF dock_bat=%.1fV rssi=%.0f",
+                     wf, af, bv, rssi);
+          }
+
