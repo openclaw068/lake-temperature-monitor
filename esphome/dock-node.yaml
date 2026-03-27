@@ -1,0 +1,90 @@
+esphome:
+  name: lake-dock-node
+  friendly_name: Lake Dock Node
+
+esp32:
+  board: heltec_wifi_lora_32_V3
+  framework:
+    type: arduino
+
+# No wifi: block on the dock node — saves power on every wake cycle
+
+deep_sleep:
+  id: deep_sleep_control
+  run_duration: 15s    # Wake window: read sensors + transmit + margin
+  sleep_duration: 5min # ~288 readings/day; adjust as needed
+
+spi:
+  clk_pin:  GPIO9
+  mosi_pin: GPIO10
+  miso_pin: GPIO11
+
+sx126x:
+  id: lora_radio
+  cs_pin:   GPIO8
+  rst_pin:  GPIO12
+  busy_pin: GPIO13
+  dio1_pin: GPIO14
+  hw_version:  sx1262
+  modulation:  LORA
+  frequency:   915MHz
+  bandwidth:   125_0kHz
+  spreading_factor: 9      # SF9: good range/speed balance for ~1 mile
+  coding_rate: CR_4_5
+  pa_power:    14
+  crc_enable:  true
+  rf_switch:   false
+  tcxo_voltage: 1_8V       # Heltec V3 TCXO on DIO3
+  tcxo_delay:   5ms
+
+one_wire:
+  - platform: gpio
+    pin: GPIO5             # 4.7kΩ pull-up to 3.3V required on this pin
+
+sensor:
+  # REPLACE addresses below with YOUR addresses from address-scanner.yaml logs
+  - platform: dallas_temp
+    address: 0x28FF123456789012  # <-- WATER PROBE ADDRESS
+    name: "Water Temp Raw"
+    id: water_temp_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+
+  - platform: dallas_temp
+    address: 0x28FF987654321098  # <-- AIR PROBE ADDRESS
+    name: "Air Temp Raw"
+    id: air_temp_c
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+
+  # Battery voltage — GPIO pin may vary by Heltec V3 hardware revision
+  - platform: adc
+    pin: GPIO37            # VERIFY against your board schematic; if wrong try GPIO1
+    name: "Battery Voltage"
+    id: bat_v
+    attenuation: 11db
+    update_interval: 10s
+    filters:
+      - multiply: 2.0      # Compensate for onboard 1:1 voltage divider
+
+# Transmit once per wake cycle then sleep
+interval:
+  - interval: 8s
+    then:
+      - sx126x.send_packet:
+          id: lora_radio
+          data: !lambda |-
+            // Pack Celsius int16_t x10; gateway converts to °F
+            int16_t wc = (int16_t)(id(water_temp_c).state * 10);
+            int16_t ac = (int16_t)(id(air_temp_c).state * 10);
+            uint8_t bv = (uint8_t)(id(bat_v).state * 10);
+            return {
+              (uint8_t)(wc >> 8), (uint8_t)(wc & 0xFF),
+              (uint8_t)(ac >> 8), (uint8_t)(ac & 0xFF),
+              bv
+            };
+      - deep_sleep.enter:
+          id: deep_sleep_control
+
+logger:
+  level: INFO

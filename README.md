@@ -1,24 +1,81 @@
-# Lake Temperature Monitor (LoRa + ESPHome + Home Assistant)
+# Lake Temperature Monitor (LoRa 915MHz + ESPHome + Home Assistant)
 
-This repo contains the **audited / corrected v2 build guide** for a solar-powered, off-grid lake temperature monitor:
-- Dock node: Heltec WiFi LoRa 32 V3 (SX1262 @ 915MHz) + 2x DS18B20 (water + air) + solar + 18650
-- Gateway node: Heltec V3 inside the house on Wi‑Fi, receives LoRa packets and exposes sensors to Home Assistant via ESPHome API
+Solar-powered dock node measures **lake water temp + air temp** and transmits readings via **LoRa (SX1262 @ 915MHz)** to a **home gateway** that forwards the values into **Home Assistant** (via ESPHome native API).
 
-## What’s in here
-- `lake temp monitor guide v2.pdf` — the original PDF artifact
-- `lake-temp-monitor-guide-v2.txt` — extracted text version (easy to diff/search)
+This repo includes:
+- The **audited/corrected v2 build guide** (PDF + text)
+- Standalone ESPHome YAML files under `./esphome/`
 
-## Quick start
-1. Read the guide (Section 3 shopping list + Sections 4–7 build + firmware).
-2. When you’re ready to flash, install ESPHome (either via Home Assistant add-on or CLI).
-3. Use the YAML in Section 7 of the guide for:
-   - Address scanner (to capture DS18B20 addresses)
-   - Dock node firmware (deep sleep + transmit)
-   - Gateway firmware (Wi‑Fi + receive + publish template sensors)
+## Hardware (high level)
+- **2× Heltec WiFi LoRa 32 V3** (US 902–928MHz version, SX1262)
+- **2× DS18B20 waterproof probes** (one water, one air)
+- Dock node power: **6V solar + 1× 18650**
 
-## Notes
-- The v2 guide fixes ESPHome YAML issues from v1 that would have caused compile failures (SX126x keys/fields, packet TX/RX API usage, and payload packing).
-- Battery ADC pin varies by Heltec V3 hardware revision; verify against your board schematic.
+## Files
+- `lake temp monitor guide v2.pdf` — full build guide (shopping list, wiring, deployment)
+- `lake-temp-monitor-guide-v2.txt` — extracted text copy
+- `esphome/address-scanner.yaml` — finds DS18B20 addresses
+- `esphome/dock-node.yaml` — deep-sleeping transmitter (NO Wi‑Fi)
+- `esphome/gateway.yaml` — always-on receiver + Home Assistant sensors
 
-## License
-Unlicensed (private use). Add a license if you want this public.
+## Recommended software approach
+If you want this integrated into your smart home long-term, the simplest path is:
+
+**Home Assistant OS / Home Assistant Supervised + ESPHome add-on**
+- ESPHome runs *inside* Home Assistant
+- You flash devices from the ESPHome UI
+- The gateway shows up as a discovered device in HA
+
+You mentioned you have a Linux server and a Pi 3 running Homebridge + Pi-hole. In practice, most people do one of:
+- Put **Home Assistant OS** on a dedicated Pi (Pi 4/5 recommended) or a small mini-PC
+- Run **Home Assistant Container** on your Linux server (plus an ESPHome container)
+
+If you tell me which box you want to run HA on, I’ll give you the exact install steps.
+
+## Setup steps (ESPHome + flashing)
+### Step 0 — Install Home Assistant + ESPHome
+Pick one:
+
+**Option A (easiest): Home Assistant + ESPHome add-on**
+1. Install Home Assistant (HA OS preferred).
+2. In HA: **Settings → Add-ons → Add-on Store → ESPHome → Install**
+3. Open the ESPHome web UI.
+
+**Option B (works anywhere): ESPHome on your PC/server (CLI)**
+You can run ESPHome without Home Assistant, just to compile/flash.
+- Docs: https://esphome.io/guides/installing_esphome.html
+
+### Step 1 — Find your DS18B20 probe addresses
+1. In ESPHome, create a new device using `esphome/address-scanner.yaml`.
+2. Flash it to the *dock node* Heltec V3 over USB.
+3. Open logs and record both DS18B20 addresses (label one **WATER**, one **AIR**).
+
+### Step 2 — Configure and flash the dock node
+1. Open `esphome/dock-node.yaml`
+2. Replace the placeholder DS18B20 addresses with your real ones.
+3. Flash to the dock node over USB.
+
+Notes:
+- The dock node intentionally has **no `wifi:` block**.
+- It wakes up, sends one LoRa packet, then deep-sleeps for ~5 minutes.
+
+### Step 3 — Configure and flash the home gateway
+1. Open `esphome/gateway.yaml`
+2. Set your Wi‑Fi SSID/password.
+3. In ESPHome, generate an API encryption key + OTA password (the UI will prompt you), and put them in the YAML.
+4. Flash to the gateway over USB.
+5. After it joins Wi‑Fi, Home Assistant should discover it as an ESPHome device.
+
+### Step 4 — Home Assistant entities
+Once the gateway is added to HA, you should see:
+- `sensor.lake_water_temperature`
+- `sensor.lake_air_temperature`
+- `sensor.dock_node_battery`
+
+## Troubleshooting quick hits
+- No packets received: verify LoRa settings match exactly on both nodes (frequency/bandwidth/SF/coding rate) and TCXO settings are present.
+- DS18B20 reads -127°C / 85°C: wiring/pull-up resistor issue.
+- Battery ADC pin varies by Heltec V3 revision: `GPIO37` might need to be changed (try `GPIO1`).
+
+## Band / region note
+This project is **US 915MHz (902–928MHz)**. Do not buy the EU 868MHz hardware.

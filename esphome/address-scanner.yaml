@@ -1,0 +1,20 @@
+esphome:
+  name: address-scanner
+
+esp32:
+  board: heltec_wifi_lora_32_V3
+  framework:
+    type: arduino
+
+logger:
+  level: DEBUG
+
+one_wire:
+  - platform: gpio
+    pin: GPIO5
+
+dallas_temp:
+  update_interval: 5s
+  # After boot, check logs for lines like:
+  # [D][dallas_temp]: Found dallas device '0x28FF...' on bus 0
+  # Record BOTH addresses, label them WATER and AIR
