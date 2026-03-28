@@ -19,32 +19,54 @@ This repo includes:
 - `esphome/gateway.yaml` — always-on receiver + Home Assistant sensors (indoor/USB power)
 - `esphome/gateway-solar-outdoor.yaml` — always-on receiver + Home Assistant sensors (outdoor/solar box)
 
-## Recommended software approach
-If you want this integrated into your smart home long-term, the simplest path is:
+## Recommended software approach (Docker on a Linux server)
+This repo now assumes you’re running:
+- **Home Assistant Container** on your Linux server
+- **ESPHome Container** alongside it
 
-**Home Assistant OS / Home Assistant Supervised + ESPHome add-on**
-- ESPHome runs *inside* Home Assistant
-- You flash devices from the ESPHome UI
-- The gateway shows up as a discovered device in HA
-
-You mentioned you have a Linux server and a Pi 3 running Homebridge + Pi-hole. In practice, most people do one of:
-- Put **Home Assistant OS** on a dedicated Pi (Pi 4/5 recommended) or a small mini-PC
-- Run **Home Assistant Container** on your Linux server (plus an ESPHome container)
-
-If you tell me which box you want to run HA on, I’ll give you the exact install steps.
+Use the included `docker-compose.yml` and see:
+- `docs/DOCKER_SETUP.md`
 
 ## Setup steps (ESPHome + flashing)
-### Step 0 — Install Home Assistant + ESPHome
-Pick one:
+### Step 0 — Start Home Assistant + ESPHome (Docker)
+From the repo root on your Linux server:
 
-**Option A (easiest): Home Assistant + ESPHome add-on**
-1. Install Home Assistant (HA OS preferred).
-2. In HA: **Settings → Add-ons → Add-on Store → ESPHome → Install**
-3. Open the ESPHome web UI.
+```bash
+mkdir -p ha_config esphome_config
 
-**Option B (works anywhere): ESPHome on your PC/server (CLI)**
-You can run ESPHome without Home Assistant, just to compile/flash.
-- Docs: https://esphome.io/guides/installing_esphome.html
+docker compose up -d
+```
+
+Then:
+- Home Assistant: `http://<server-ip>:8123`
+- ESPHome: `http://<server-ip>:6052`
+
+For details (USB flashing vs flashing from a laptop), see `docs/DOCKER_SETUP.md`.
+
+### Step 1 — Find your DS18B20 probe addresses
+1. In ESPHome, create a new device using `esphome/address-scanner.yaml`.
+2. Flash it to the *dock node* Heltec V3 over USB.
+3. Open logs and record both DS18B20 addresses (label one **WATER**, one **AIR**).
+
+### Step 2 — Configure and flash the dock node
+1. Open `esphome/dock-node.yaml`
+2. Replace the placeholder DS18B20 addresses with your real ones.
+3. Flash to the dock node over USB.
+
+Notes:
+- The dock node intentionally has **no `wifi:` block**.
+- It wakes up, sends one LoRa packet, then deep-sleeps for ~5 minutes.
+
+### Step 3 — Configure and flash the gateway
+Pick one gateway config:
+- **Indoor/USB-powered gateway:** `esphome/gateway.yaml`
+- **Outdoor/solar gateway:** `esphome/gateway-solar-outdoor.yaml`
+
+Then:
+1. Set your Wi‑Fi SSID/password.
+2. In ESPHome, generate an API encryption key + OTA password (the UI will prompt you), and put them in the YAML.
+3. Flash to the gateway over USB.
+4. After it joins Wi‑Fi, Home Assistant should discover it as an ESPHome device.
 
 ### Step 1 — Find your DS18B20 probe addresses
 1. In ESPHome, create a new device using `esphome/address-scanner.yaml`.
