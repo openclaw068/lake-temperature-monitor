@@ -1,0 +1,21 @@
+[Unit]
+Description=Lake Temp MQTT Publisher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Environment=MQTT_HOST=homeassistant.local
+Environment=MQTT_PORT=1883
+Environment=MQTT_TOPIC_PREFIX=lake
+Environment=INTERVAL_SECONDS=300
+# Optional:
+# Environment=WATER_SENSOR_ID=28-00000abc1234
+# Environment=AIR_SENSOR_ID=28-00000def5678
+ExecStart=/usr/bin/python3 /opt/lake-temp/lake_temp_publisher.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
