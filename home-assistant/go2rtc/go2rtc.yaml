@@ -1,0 +1,5 @@
+streams:
+  lake_cam:
+    # Replace <dock-ip> with the dock Pi IP on your HaLow/LAN.
+    # We'll publish RTSP from the dock Pi.
+    - rtsp://<dock-ip>:8554/lake

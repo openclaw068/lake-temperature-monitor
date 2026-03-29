@@ -1,0 +1,11 @@
+# Minimal MediaMTX config
+# Docs: https://github.com/bluenviron/mediamtx
+
+rtspAddress: :8554
+protocols: [tcp]
+
+paths:
+  lake:
+    # We'll publish to this path from libcamera-vid via RTP/RTSP pipeline.
+    # This file is a placeholder; exact command depends on preferred pipeline.
+    source: publisher

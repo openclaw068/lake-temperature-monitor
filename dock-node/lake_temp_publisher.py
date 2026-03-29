@@ -84,17 +84,29 @@ def main():
         ts = datetime.now(timezone.utc).isoformat()
 
         readings = {}
+        water_f = None
+        air_f = None
+
         for sid in sensor_ids:
             try:
                 c = read_ds18b20(sid)
                 f = (c * 9.0 / 5.0) + 32.0
-                readings[sid] = {"c": round(c, 2), "f": round(f, 2)}
+                f_r = round(f, 2)
+                readings[sid] = {"c": round(c, 2), "f": f_r}
+
+                if roles.get("water") == sid:
+                    water_f = f_r
+                if roles.get("air") == sid:
+                    air_f = f_r
+
             except Exception as e:
                 readings[sid] = {"error": str(e)}
 
         payload = {
             "ts": ts,
             "host": hostname,
+            "water_f": water_f,
+            "air_f": air_f,
             "roles": roles,
             "readings": readings,
         }
